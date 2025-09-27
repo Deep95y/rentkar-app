@@ -1,4 +1,4 @@
-# Rentkar Booking & Partner Verification System
+# Rentkar Booking & Partner Verification System 🚗
 
 Tech: Next.js (App Router, TS, Tailwind), MongoDB, Redis, Docker.
 
