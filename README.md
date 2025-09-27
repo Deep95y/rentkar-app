@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rentkar Booking & Partner Verification System
 
-## Getting Started
+Tech: Next.js (App Router, TS, Tailwind), MongoDB, Redis, Docker.
 
-First, run the development server:
+## Quick start (Docker Compose)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Copy env (optional; compose sets defaults)
+
+```
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Start stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+docker-compose up --build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Seed sample data
 
-## Learn More
+```
+curl -X POST http://localhost:3000/api/seed
+```
 
-To learn more about Next.js, take a look at the following resources:
+4. Open UI
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- http://localhost:3000
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local dev
 
-## Deploy on Vercel
+```
+cd rentkar-app
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Set environment in `.env.local`:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+MONGODB_URI=mongodb://localhost:27017/rentkar
+MONGODB_DB=rentkar
+REDIS_URL=redis://localhost:6379
+```
+
+Run dependencies locally (optional):
+
+```
+docker run --name rentkar-mongo -p 27017:27017 -d mongo:7
+docker run --name rentkar-redis -p 6379:6379 -d redis:7-alpine
+```
+
+## API Overview
+
+- POST `/api/seed` – loads sample bookings and partners
+- GET `/api/bookings` – list bookings
+- POST `/api/bookings/:id/assign` – concurrency-safe partner assignment
+- POST `/api/bookings/:id/confirm` – concurrency-safe confirmation; publishes `booking:confirmed`
+- GET `/api/partners` – list partners
+- POST `/api/partners/:id/gps` – update GPS, rate limited (6/min/partner), publishes `partner:gps`
+- GET `/api/events` – Server-Sent Events stream of Redis pub/sub
+
+## Concurrency & Redis
+
+- Locks: simple Redis `SET NX PX` with token + Lua compare-and-del for release.
+- Rate limit: window key with `INCR` + `EXPIRE`.
+- Pub/Sub: Redis channels `booking:confirmed` and `partner:gps`.
+
+## Notes
+
+- Mongo indexes (2dsphere on `partners.location`) are created on startup in `src/lib/db.ts` via `ensureIndexes()` if you call it; optional for this test but recommended.
+- Partner selection: nearest online partner by haversine distance to booking address.
+- UI: minimal table with Assign/Confirm actions and live GPS updates via SSE.

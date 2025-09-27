@@ -1,103 +1,123 @@
-import Image from "next/image";
+"use client";
+import { useEffect, useMemo, useState } from 'react';
+
+type Booking = {
+	_id: string;
+	status?: string;
+	assignedPartnerId?: string | null;
+};
+
+type ServerEvent = MessageEvent<string>;
+
+type Gps = { partnerId: string; lat: number; lng: number };
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+	const [bookings, setBookings] = useState<Booking[]>([]);
+	const [gps, setGps] = useState<Record<string, Gps>>({});
+	const [loading, setLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+	const load = async () => {
+		try {
+			const res = await fetch('/api/bookings');
+			if (!res.ok) { setBookings([]); return; }
+			const text = await res.text();
+			if (!text) { setBookings([]); return; }
+			const data = JSON.parse(text) as Booking[];
+			setBookings(Array.isArray(data) ? data : []);
+		} catch {
+			setBookings([]);
+		} 
+	};
+
+	useEffect(() => { load(); }, []);
+
+	useEffect(() => {
+		const es = new EventSource('/api/events');
+		es.addEventListener('booking-confirmed', () => { load(); });
+		es.addEventListener('partner-gps', (e: Event) => {
+			const me = e as ServerEvent;
+			try {
+				const data = JSON.parse(me.data) as Gps;
+				setGps((curr) => ({ ...curr, [data.partnerId]: data }));
+			} catch { /* ignore */ }
+		});
+		return () => es.close();
+	}, []);
+
+	const gpsList = useMemo(() => Object.values(gps), [gps]);
+
+	const doAssign = async (id: string) => {
+		setLoading(true);
+		try {
+			await fetch(`/api/bookings/${id}/assign`, { method: 'POST' });
+			await load();
+		} finally { setLoading(false); }
+	};
+	const doConfirm = async (id: string) => {
+		setLoading(true);
+		try {
+			await fetch(`/api/bookings/${id}/confirm`, { method: 'POST' });
+			await load();
+		} finally { setLoading(false); }
+	};
+
+	const seed = async () => {
+		await fetch('/api/seed', { method: 'POST' });
+		await load();
+	};
+
+	return (
+		<div className="p-6 space-y-6">
+			<div className="flex gap-3">
+				<button className="px-3 py-2 bg-black text-white rounded" onClick={seed}>Seed</button>
+				<button className="px-3 py-2 border rounded" onClick={load} disabled={loading}>Refresh</button>
+			</div>
+			<h2 className="text-xl font-semibold">Bookings</h2>
+			<table className="w-full text-sm border">
+			<thead>
+					<tr className="bg-blue-900 text-white">
+						<th className="p-2 border border-blue-800">ID</th>
+						<th className="p-2 border border-blue-800">Status</th>
+						<th className="p-2 border border-blue-800">Assigned Partner</th>
+						<th className="p-2 border border-blue-800">Actions</th>
+					</tr>
+					</thead>
+				<tbody>
+					{bookings.map((b) => (
+						<tr key={b._id}>
+							<td className="p-2 border font-mono">{b._id}</td>
+							<td className="p-2 border">{b.status || 'PENDING'}</td>
+							<td className="p-2 border">{b.assignedPartnerId || '-'}</td>
+							<td className="p-2 border">
+								<div className="flex gap-2">
+									<button className="px-2 py-1 border rounded" onClick={() => doAssign(b._id)} disabled={loading}>Assign</button>
+									<button className="px-2 py-1 border rounded" onClick={() => doConfirm(b._id)} disabled={loading}>Confirm</button>
+								</div>
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+
+			<h2 className="text-xl font-semibold">Partner GPS (live)</h2>
+			<table className="w-full text-sm border">
+				<thead>
+					<tr className="bg-blue-900 text-white">
+						<th className="p-2 border border-blue-800">Partner</th>
+						<th className="p-2 border border-blue-800">Lat</th>
+						<th className="p-2 border border-blue-800">Lng</th>
+					</tr>
+				</thead>
+				<tbody>
+					{gpsList.map((g) => (
+						<tr key={g.partnerId}>
+							<td className="p-2 border font-mono">{g.partnerId}</td>
+							<td className="p-2 border">{g.lat.toFixed(6)}</td>
+							<td className="p-2 border">{g.lng.toFixed(6)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	);
 }
