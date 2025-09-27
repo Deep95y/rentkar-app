@@ -11,8 +11,18 @@ type ServerEvent = MessageEvent<string>;
 
 type Gps = { partnerId: string; lat: number; lng: number };
 
+type Partner = {
+	_id: string;
+	name: string;
+	city: string;
+	status: 'online' | 'offline';
+	location: { lat: number; lng: number };
+	lastGpsAt?: string;
+};
+
 export default function Home() {
 	const [bookings, setBookings] = useState<Booking[]>([]);
+	const [partners, setPartners] = useState<Partner[]>([]);
 	const [gps, setGps] = useState<Record<string, Gps>>({});
 	const [loading, setLoading] = useState(false);
 
@@ -29,7 +39,23 @@ export default function Home() {
 		} 
 	};
 
-	useEffect(() => { load(); }, []);
+	const loadPartners = async () => {
+		try {
+			const res = await fetch('/api/partners');
+			if (!res.ok) { setPartners([]); return; }
+			const text = await res.text();
+			if (!text) { setPartners([]); return; }
+			const data = JSON.parse(text) as Partner[];
+			setPartners(Array.isArray(data) ? data : []);
+		} catch {
+			setPartners([]);
+		}
+	};
+
+	useEffect(() => { 
+		load(); 
+		loadPartners();
+	}, []);
 
 	useEffect(() => {
 		const es = new EventSource('/api/events');
@@ -44,7 +70,24 @@ export default function Home() {
 		return () => es.close();
 	}, []);
 
-	const gpsList = useMemo(() => Object.values(gps), [gps]);
+	const gpsList = useMemo(() => {
+		// Combine static partner data with live GPS updates
+		const combined = [...partners];
+		
+		// Update with live GPS data if available
+		Object.values(gps).forEach(liveGps => {
+			const partnerIndex = combined.findIndex(p => p._id === liveGps.partnerId);
+			if (partnerIndex >= 0) {
+				combined[partnerIndex] = {
+					...combined[partnerIndex],
+					location: { lat: liveGps.lat, lng: liveGps.lng },
+					lastGpsAt: new Date().toISOString()
+				};
+			}
+		});
+		
+		return combined;
+	}, [partners, gps]);
 
 	const doAssign = async (id: string) => {
 		setLoading(true);
@@ -64,13 +107,14 @@ export default function Home() {
 	const seed = async () => {
 		await fetch('/api/seed', { method: 'POST' });
 		await load();
+		await loadPartners();
 	};
 
 	return (
 		<div className="p-6 space-y-6">
 			<div className="flex gap-3">
 				<button className="px-3 py-2 bg-black text-white rounded" onClick={seed}>Seed</button>
-				<button className="px-3 py-2 border rounded" onClick={load} disabled={loading}>Refresh</button>
+				<button className="px-3 py-2 border rounded" onClick={() => { load(); loadPartners(); }} disabled={loading}>Refresh</button>
 			</div>
 			<h2 className="text-xl font-semibold">Bookings</h2>
 			<table className="w-full text-sm border">
@@ -109,11 +153,11 @@ export default function Home() {
 					</tr>
 				</thead>
 				<tbody>
-					{gpsList.map((g) => (
-						<tr key={g.partnerId}>
-							<td className="p-2 border font-mono">{g.partnerId}</td>
-							<td className="p-2 border">{g.lat.toFixed(6)}</td>
-							<td className="p-2 border">{g.lng.toFixed(6)}</td>
+					{gpsList.map((partner) => (
+						<tr key={partner._id}>
+							<td className="p-2 border font-mono">{partner.name} ({partner._id.slice(-6)})</td>
+							<td className="p-2 border">{partner.location.lat.toFixed(6)}</td>
+							<td className="p-2 border">{partner.location.lng.toFixed(6)}</td>
 						</tr>
 					))}
 				</tbody>
