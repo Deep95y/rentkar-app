@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 type Booking = {
 	_id: string;
@@ -21,6 +23,7 @@ type Partner = {
 };
 
 export default function Home() {
+	const { user, loading: authLoading } = useAuth();
 	const [bookings, setBookings] = useState<Booking[]>([]);
 	const [partners, setPartners] = useState<Partner[]>([]);
 	const [gps, setGps] = useState<Record<string, Gps>>({});
@@ -110,11 +113,67 @@ export default function Home() {
 		await loadPartners();
 	};
 
+	// Show loading while checking authentication
+	if (authLoading) {
+		return (
+			<div className="min-h-screen flex items-center justify-center">
+				<div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+			</div>
+		);
+	}
+
+	// Show landing page if not authenticated
+	if (!user) {
+		return (
+			<div className="min-h-screen bg-gray-50">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+					<div className="text-center py-12">
+						<h1 className="text-4xl font-bold text-gray-900 mb-4">Welcome to Rentkar</h1>
+						<p className="text-xl text-gray-600 mb-8">Your trusted vehicle rental platform</p>
+						<div className="flex justify-center space-x-4">
+							<Link
+								href="/auth/login"
+								className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700"
+							>
+								Sign In
+							</Link>
+							<Link
+								href="/auth/register"
+								className="bg-white text-indigo-600 px-6 py-3 rounded-lg border border-indigo-600 hover:bg-indigo-50"
+							>
+								Sign Up
+							</Link>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Redirect authenticated users to their dashboard
+	if (user) {
+		return (
+			<div className="min-h-screen flex items-center justify-center">
+				<div className="text-center">
+					<div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+					<p className="text-gray-600">Redirecting to your dashboard...</p>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="p-6 space-y-6">
-			<div className="flex gap-3">
-				<button className="px-3 py-2 bg-black text-white rounded" onClick={seed}>Seed</button>
-				<button className="px-3 py-2 border rounded" onClick={() => { load(); loadPartners(); }} disabled={loading}>Refresh</button>
+			<div className="flex justify-between items-center">
+				<div className="flex gap-3">
+					<button className="px-3 py-2 bg-black text-white rounded" onClick={seed}>Seed</button>
+					<button className="px-3 py-2 border rounded" onClick={() => { load(); loadPartners(); }} disabled={loading}>Refresh</button>
+				</div>
+				<div className="flex gap-3">
+					<a href="/products" className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+						Manage Products
+					</a>
+				</div>
 			</div>
 			<h2 className="text-xl font-semibold">Bookings</h2>
 			<table className="w-full text-sm border">
